@@ -545,6 +545,9 @@
                 // Load state from Firestore
                 await loadState();
 
+                // Migrate localStorage data to Firestore (one-time)
+                await migrateLocalData();
+
                 // Restore drafts (kept in localStorage for instant typing)
                 const todayStr = new Date().toDateString();
                 if (state.lastDate === todayStr) {
@@ -632,6 +635,88 @@
                 }, { merge: true });
             } catch (error) {
                 console.error('Save state error:', error);
+            }
+        }
+
+        // ============================================================
+        //  MIGRATION — localStorage → Firestore (one-time)
+        // ============================================================
+
+        async function migrateLocalData() {
+            if (!currentUser) return;
+
+            // Check if migration was already done
+            const migrationKey = `migrated_to_firestore_${currentUser.uid}`;
+            if (localStorage.getItem(migrationKey)) return;
+
+            const localState = localStorage.getItem('brain_opt_state');
+            const localArchives = localStorage.getItem('brain_opt_archives');
+
+            // Nothing to migrate
+            if (!localState && !localArchives) {
+                localStorage.setItem(migrationKey, 'done');
+                return;
+            }
+
+            let migratedCount = 0;
+
+            try {
+                // Migrate state (streak, lastDate) — only if Firestore has no data yet
+                if (localState) {
+                    const parsed = JSON.parse(localState);
+                    if (parsed.streak && parsed.streak > state.streak) {
+                        state.streak = parsed.streak;
+                        state.lastDate = parsed.lastDate;
+                        await saveState();
+                        els.streakDisplay.textContent = `${state.streak} DAY`;
+                        console.log('MIGRATED STATE:', parsed);
+                    }
+                }
+
+                // Migrate archives
+                if (localArchives) {
+                    const archives = JSON.parse(localArchives);
+                    if (archives.length > 0) {
+                        // Use batched writes (max 500 per batch)
+                        const batchSize = 450;
+                        for (let i = 0; i < archives.length; i += batchSize) {
+                            const batch = db.batch();
+                            const chunk = archives.slice(i, i + batchSize);
+
+                            chunk.forEach(entry => {
+                                const ref = db.collection('users').doc(currentUser.uid)
+                                    .collection('archives').doc();
+                                batch.set(ref, {
+                                    date: entry.date,
+                                    input: entry.input || '',
+                                    output: entry.output || '',
+                                    actionPlan: entry.actionPlan || '',
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                                    migratedFrom: 'localStorage'
+                                });
+                            });
+
+                            await batch.commit();
+                            migratedCount += chunk.length;
+                        }
+                        console.log(`MIGRATED ${migratedCount} ARCHIVES`);
+                    }
+                }
+
+                // Mark migration complete
+                localStorage.setItem(migrationKey, 'done');
+
+                // Clean up old localStorage data
+                localStorage.removeItem('brain_opt_state');
+                localStorage.removeItem('brain_opt_archives');
+                localStorage.removeItem('brain_opt_reset_v2');
+
+                if (migratedCount > 0 || (localState && JSON.parse(localState).streak > 0)) {
+                    alert(`✅ 로컬 데이터가 클라우드로 이전되었습니다!\n\n• Streak: ${state.streak} DAY\n• 글 기록: ${migratedCount}건\n\n이제 어디서든 로그인하면 데이터가 동기화됩니다.`);
+                }
+            } catch (error) {
+                console.error('Migration error:', error);
+                alert('데이터 이전 중 오류가 발생했습니다: ' + error.message);
             }
         }
 

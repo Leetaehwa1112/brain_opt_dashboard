@@ -7,6 +7,12 @@
     <title>22 STRATEGY // BRAIN OPTIMIZATION</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDK (compat v12.3.0) -->
+    <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
+
     <style>
         :root {
             --bg-color: #050505;
@@ -24,7 +30,6 @@
             color: var(--main-color);
             font-family: 'JetBrains Mono', monospace;
             overflow: hidden;
-            /* Prevent body scroll, handle in panels */
             height: 100vh;
             width: 100vw;
         }
@@ -183,14 +188,105 @@
             cursor: pointer;
             box-shadow: 0 0 5px var(--main-color);
         }
+
+        /* Google Login Button */
+        .google-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: #000;
+            border: 1px solid var(--main-color);
+            color: var(--main-color);
+            padding: 16px 40px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .google-btn:hover {
+            background: var(--main-color);
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
+        }
+
+        .google-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* User Profile */
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid var(--main-color);
+        }
+
+        /* Loading spinner */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--accent-color);
+            border-top-color: var(--main-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
     </style>
 </head>
 
 <body class="crt flex flex-col h-screen opacity-0 transition-opacity duration-1000" id="app-body">
 
+    <!-- LOGIN MODAL -->
+    <div id="login-modal"
+        class="modal-overlay fixed inset-0 z-[70] flex items-center justify-center flex-col text-center p-8">
+        <div class="mb-8">
+            <h1 class="text-6xl font-bold mb-4 glow-text tracking-tighter">PROTOCOLS // 22</h1>
+            <p class="text-sm text-gray-500 tracking-widest uppercase">BRAIN OPTIMIZATION SYSTEM</p>
+        </div>
+        <div class="border border-[#00ff4133] p-8 mb-8 max-w-md w-full">
+            <p class="text-xs text-gray-500 mb-6 uppercase tracking-wider">AUTHENTICATION REQUIRED</p>
+            <button id="btn-google-login" class="google-btn w-full">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                        fill="#4285F4" />
+                    <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853" />
+                    <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05" />
+                    <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335" />
+                </svg>
+                GOOGLE LOGIN
+            </button>
+        </div>
+        <p id="login-status" class="text-xs text-gray-600 mt-4">SYSTEM STATUS: WAITING FOR AUTHENTICATION...</p>
+    </div>
+
     <!-- START MODAL -->
     <div id="start-modal"
-        class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center flex-col text-center p-8">
+        class="modal-overlay fixed inset-0 z-[60] flex items-center justify-center flex-col text-center p-8 hidden">
         <h1 class="text-6xl font-bold mb-8 glow-text tracking-tighter">PROTOCOLS // 22</h1>
         <p class="text-xl mb-12 max-w-2xl leading-relaxed text-gray-300">
             뇌 최적화를 위한 2시간의 전략 실행.<br>
@@ -271,6 +367,16 @@
         </div>
 
         <div class="flex items-center gap-6">
+            <!-- USER PROFILE -->
+            <div id="user-profile" class="user-profile hidden">
+                <img id="user-avatar" class="user-avatar" src="" alt="avatar">
+                <span id="user-name" class="text-xs text-gray-400 max-w-[80px] truncate"></span>
+                <button id="btn-logout"
+                    class="border border-gray-600 text-gray-500 px-2 py-0.5 text-[10px] hover:border-red-500 hover:text-red-500 transition-colors uppercase"
+                    title="로그아웃">
+                    OUT
+                </button>
+            </div>
             <div class="text-sm text-right">
                 <span class="block text-xs opacity-50">CURRENT_STREAK</span>
                 <span id="streak-display" class="text-xl font-bold">0 DAY</span>
@@ -315,8 +421,8 @@
                 </div>
             </div>
 
-            <textarea id="output-area" class="hud-input w-full flex-1 p-2 text-sm"
-                placeholder=">> 읽은 내용을 바탕으로 사고를 확장하고 글을 쓰십시오.\n>> 최소 500자 이상 기록해야 임무를 완료할 수 있습니다."></textarea>
+            <textarea id="output-area" class="hud-input w-full flex-1 p-2 text-sm" placeholder=">> 읽은 내용을 바탕으로 사고를 확장하고 글을 쓰십시오.
+>> 최소 500자 이상 기록해야 임무를 완료할 수 있습니다."></textarea>
 
             <!-- PROGRESS BAR BOTTOM -->
             <div class="w-full h-1 bg-[#1a1a1a] mt-4 relative">
@@ -337,7 +443,7 @@
     <!-- FOOTER -->
     <footer
         class="border-t border-[#00ff4133] px-6 py-2 flex justify-between items-center text-[10px] text-[#00ff4166] z-40 bg-[#050505]">
-        <span>SYSTEM_ID: BRAIN_OPT_V1.0</span>
+        <span>SYSTEM_ID: BRAIN_OPT_V2.0 // FIREBASE_SYNC</span>
         <div class="flex gap-4">
             <span>MEM: OPTIMAL</span>
             <span>NET: SECURE</span>
@@ -346,9 +452,28 @@
     </footer>
 
     <script>
+        // ============================================================
+        //  FIREBASE CONFIG — 여기에 본인의 Firebase 설정을 붙여넣으세요!
+        // ============================================================
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // --- FIREBASE INIT ---
+        const firebaseApp = firebase.initializeApp(firebaseConfig);
+        const auth = firebaseApp.auth();
+        const db = firebaseApp.firestore();
+        const googleProvider = new firebase.auth.GoogleAuthProvider();
+        let currentUser = null;
+
         // --- CONSTANTS & STATE ---
         const MIN_CHARS = 500;
-        const TIMER_DURATION = 120 * 60; // 120 minutes in seconds
+        const TIMER_DURATION = 120 * 60;
 
         const state = {
             timer: TIMER_DURATION,
@@ -360,10 +485,13 @@
 
         // --- DOM ELEMENTS ---
         const els = {
+            loginModal: document.getElementById('login-modal'),
             startModal: document.getElementById('start-modal'),
             pauseModal: document.getElementById('pause-modal'),
             finishModal: document.getElementById('finish-modal'),
             historyModal: document.getElementById('history-modal'),
+            btnGoogleLogin: document.getElementById('btn-google-login'),
+            loginStatus: document.getElementById('login-status'),
             btnStart: document.getElementById('btn-start'),
             btnPause: document.getElementById('btn-pause'),
             btnResume: document.getElementById('btn-resume'),
@@ -372,6 +500,7 @@
             btnHistory: document.getElementById('btn-history'),
             btnCloseHistory: document.getElementById('btn-close-history'),
             btnClearHistory: document.getElementById('btn-clear-history'),
+            btnLogout: document.getElementById('btn-logout'),
             historyList: document.getElementById('history-list'),
             historyCount: document.getElementById('history-count'),
             timerDisplay: document.getElementById('timer-display'),
@@ -383,12 +512,14 @@
             streakDisplay: document.getElementById('streak-display'),
             btnResetStreak: document.getElementById('btn-reset-streak'),
             clockDisplay: document.getElementById('clock-display'),
-            actionPlanInput: document.getElementById('action-plan-input')
+            actionPlanInput: document.getElementById('action-plan-input'),
+            userProfile: document.getElementById('user-profile'),
+            userAvatar: document.getElementById('user-avatar'),
+            userName: document.getElementById('user-name')
         };
 
         // --- INIT ---
         window.addEventListener('DOMContentLoaded', () => {
-            loadState();
             updateClock();
             setInterval(updateClock, 1000);
 
@@ -396,58 +527,116 @@
             setTimeout(() => {
                 els.appBody.classList.remove('opacity-0');
             }, 100);
-
-            // Restore text if any (simple autosave)
-            // But only if today's mission hasn't been completed yet
-            const todayStr = new Date().toDateString();
-            if (state.lastDate === todayStr) {
-                // Today already completed — clear drafts so it starts fresh for display
-                els.inputArea.value = '';
-                els.outputArea.value = '';
-            } else {
-                els.inputArea.value = localStorage.getItem('draft_input') || '';
-                els.outputArea.value = localStorage.getItem('draft_output') || '';
-            }
-            updateValidation();
         });
 
-        // --- CORE LOGIC ---
+        // ============================================================
+        //  AUTH — Firebase Authentication
+        // ============================================================
 
-        function loadState() {
-            const stored = localStorage.getItem('brain_opt_state');
-            if (stored) {
-                const data = JSON.parse(stored);
-                state.streak = data.streak || 0;
-                state.lastDate = data.lastDate;
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                els.loginModal.classList.add('hidden');
+                els.userProfile.classList.remove('hidden');
+                els.userAvatar.src = user.photoURL || '';
+                els.userName.textContent = user.displayName || 'USER';
 
-                // Validate streak continuity
-                // If lastDate exists, check if it's today or yesterday
-                // If more than 1 day has passed, reset streak to 0
-                if (state.lastDate) {
-                    const last = new Date(state.lastDate);
-                    const now = new Date();
-                    // Calculate difference in calendar days
-                    const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
-                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    const diffDays = Math.floor((today - lastDay) / (1000 * 60 * 60 * 24));
+                // Load state from Firestore
+                await loadState();
 
-                    if (diffDays > 1) {
-                        // Streak broken — missed a day
-                        state.streak = 0;
-                        state.lastDate = null;
-                        saveState();
+                // Restore drafts (kept in localStorage for instant typing)
+                const todayStr = new Date().toDateString();
+                if (state.lastDate === todayStr) {
+                    els.inputArea.value = '';
+                    els.outputArea.value = '';
+                } else {
+                    els.inputArea.value = localStorage.getItem('draft_input') || '';
+                    els.outputArea.value = localStorage.getItem('draft_output') || '';
+                }
+                updateValidation();
+
+                // Show start modal
+                els.startModal.classList.remove('hidden');
+            } else {
+                currentUser = null;
+                els.loginModal.classList.remove('hidden');
+                els.startModal.classList.add('hidden');
+                els.userProfile.classList.add('hidden');
+            }
+        });
+
+        async function googleLogin() {
+            try {
+                els.loginStatus.textContent = 'AUTHENTICATING...';
+                els.btnGoogleLogin.disabled = true;
+                await auth.signInWithPopup(googleProvider);
+            } catch (error) {
+                console.error('Login error:', error);
+                els.loginStatus.textContent = `AUTH FAILED: ${error.code}`;
+                els.btnGoogleLogin.disabled = false;
+            }
+        }
+
+        async function logout() {
+            if (!confirm('로그아웃 하시겠습니까?')) return;
+            await auth.signOut();
+            localStorage.removeItem('draft_input');
+            localStorage.removeItem('draft_output');
+            location.reload();
+        }
+
+        // ============================================================
+        //  FIRESTORE — State (streak, lastDate)
+        // ============================================================
+
+        async function loadState() {
+            if (!currentUser) return;
+            try {
+                const doc = await db.collection('users').doc(currentUser.uid).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    state.streak = data.streak || 0;
+                    state.lastDate = data.lastDate || null;
+
+                    // Validate streak continuity
+                    if (state.lastDate) {
+                        const last = new Date(state.lastDate);
+                        const now = new Date();
+                        const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        const diffDays = Math.floor((today - lastDay) / (1000 * 60 * 60 * 24));
+
+                        if (diffDays > 1) {
+                            state.streak = 0;
+                            state.lastDate = null;
+                            await saveState();
+                        }
                     }
                 }
+            } catch (error) {
+                console.error('Load state error:', error);
             }
             els.streakDisplay.textContent = `${state.streak} DAY`;
         }
 
-        function saveState() {
-            localStorage.setItem('brain_opt_state', JSON.stringify({
-                streak: state.streak,
-                lastDate: state.lastDate
-            }));
+        async function saveState() {
+            if (!currentUser) return;
+            try {
+                await db.collection('users').doc(currentUser.uid).set({
+                    streak: state.streak,
+                    lastDate: state.lastDate,
+                    displayName: currentUser.displayName || '',
+                    email: currentUser.email || '',
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            } catch (error) {
+                console.error('Save state error:', error);
+            }
         }
+
+        // ============================================================
+        //  TIMER
+        // ============================================================
 
         function startTimer() {
             if (state.isRunning) return;
@@ -479,8 +668,7 @@
             const s = state.timer % 60;
             els.timerDisplay.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
-            // Critical time visual
-            if (state.timer < 300) { // last 5 mins
+            if (state.timer < 300) {
                 els.timerDisplay.classList.add('text-red-500');
                 els.timerDisplay.classList.add('animate-pulse');
             }
@@ -491,25 +679,23 @@
             els.clockDisplay.textContent = now.toLocaleTimeString('en-US', { hour12: false });
         }
 
-        // --- VALIDATION & PROGRESS ---
+        // ============================================================
+        //  VALIDATION & PROGRESS
+        // ============================================================
+
         function updateValidation() {
             const length = els.outputArea.value.length;
             const progress = Math.min((length / MIN_CHARS) * 100, 100);
 
-            // Update Text
             els.charCount.textContent = `${length} / ${MIN_CHARS}`;
-
-            // Update Bar
             els.progressBar.style.width = `${progress}%`;
 
-            // Color Shift Logic
             if (length >= MIN_CHARS) {
                 els.progressBar.classList.remove('bg-red-600', 'shadow-[0_0_10px_red]');
                 els.progressBar.classList.add('bg-[#00ff41]', 'shadow-[0_0_10px_#00ff41]');
                 els.charCount.classList.remove('text-red-500');
                 els.charCount.classList.add('text-[#00ff41]');
 
-                // Enable Button
                 els.btnComplete.disabled = false;
                 els.btnComplete.classList.remove('border-[#333]', 'text-[#333]', 'cursor-not-allowed');
                 els.btnComplete.classList.add('border-[#00ff41]', 'text-[#00ff41]', 'bg-[#00ff4111]', 'hover:bg-[#00ff41]', 'hover:text-black', 'cursor-pointer', 'shadow-[0_0_15px_rgba(0,255,65,0.3)]');
@@ -520,84 +706,211 @@
                 els.charCount.classList.add('text-red-500');
                 els.charCount.classList.remove('text-[#00ff41]');
 
-                // Disable Button
                 els.btnComplete.disabled = true;
                 els.btnComplete.classList.add('border-[#333]', 'text-[#333]', 'cursor-not-allowed');
                 els.btnComplete.classList.remove('border-[#00ff41]', 'text-[#00ff41]', 'bg-[#00ff4111]', 'hover:bg-[#00ff41]', 'hover:text-black', 'cursor-pointer', 'shadow-[0_0_15px_rgba(0,255,65,0.3)]');
                 els.btnComplete.textContent = "INSUFFICIENT DATA (LOCK)";
             }
 
-            // Simple Autosave
+            // Autosave drafts to localStorage (fast, per-keystroke)
             localStorage.setItem('draft_input', els.inputArea.value);
             localStorage.setItem('draft_output', els.outputArea.value);
         }
 
+        // ============================================================
+        //  MISSION COMPLETE — Save to Firestore
+        // ============================================================
+
         function finishMission() {
             els.finishModal.classList.remove('hidden');
-            pauseTimer(); // Stop timer effectively
+            pauseTimer();
             els.actionPlanInput.focus();
         }
 
-        function saveAndTerminate() {
+        async function saveAndTerminate() {
             const plan = els.actionPlanInput.value.trim();
             if (!plan) {
                 alert("ACTION PLAN REQUIRED.");
                 return;
             }
-
-            // Update Streak logic
-            const today = new Date().toDateString();
-            if (state.lastDate !== today) {
-                // Check if streak is continuous (today or consecutive day)
-                if (state.lastDate) {
-                    const last = new Date(state.lastDate);
-                    const now = new Date();
-                    const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
-                    const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    const diffDays = Math.floor((todayDay - lastDay) / (1000 * 60 * 60 * 24));
-
-                    if (diffDays > 1) {
-                        // Streak broken, start fresh
-                        state.streak = 1;
-                    } else {
-                        state.streak++;
-                    }
-                } else {
-                    // First time ever
-                    state.streak = 1;
-                }
-                state.lastDate = today;
-                saveState();
+            if (!currentUser) {
+                alert("AUTH ERROR: 로그인이 필요합니다.");
+                return;
             }
 
-            // Archive Data — persist to localStorage
-            const archive = {
-                id: Date.now(),
-                date: new Date().toISOString(),
-                input: els.inputArea.value,
-                output: els.outputArea.value,
-                actionPlan: plan
-            };
+            // Disable button to prevent double submit
+            els.btnSaveFinish.disabled = true;
+            els.btnSaveFinish.textContent = 'SAVING...';
 
-            const archives = JSON.parse(localStorage.getItem('brain_opt_archives') || '[]');
-            archives.push(archive);
-            localStorage.setItem('brain_opt_archives', JSON.stringify(archives));
-            console.log("ARCHIVED:", archive);
+            try {
+                // Update Streak logic
+                const today = new Date().toDateString();
+                if (state.lastDate !== today) {
+                    if (state.lastDate) {
+                        const last = new Date(state.lastDate);
+                        const now = new Date();
+                        const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+                        const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        const diffDays = Math.floor((todayDay - lastDay) / (1000 * 60 * 60 * 24));
 
-            // Clean up drafts
-            localStorage.removeItem('draft_input');
-            localStorage.removeItem('draft_output');
+                        if (diffDays > 1) {
+                            state.streak = 1;
+                        } else {
+                            state.streak++;
+                        }
+                    } else {
+                        state.streak = 1;
+                    }
+                    state.lastDate = today;
+                    await saveState();
+                }
 
-            alert(`DAY ${state.streak} SECURED. STREAK: ${state.streak} DAYS. GOOD WORK.`);
-            location.reload(); // Hard reset for next session
+                // Archive Data — save to Firestore
+                const archive = {
+                    date: new Date().toISOString(),
+                    input: els.inputArea.value,
+                    output: els.outputArea.value,
+                    actionPlan: plan,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').add(archive);
+                console.log("ARCHIVED:", archive);
+
+                // Clean up drafts
+                localStorage.removeItem('draft_input');
+                localStorage.removeItem('draft_output');
+
+                alert(`DAY ${state.streak} SECURED. STREAK: ${state.streak} DAYS. GOOD WORK.`);
+                location.reload();
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('저장 실패: ' + error.message);
+                els.btnSaveFinish.disabled = false;
+                els.btnSaveFinish.textContent = 'SAVE & TERMINATE';
+            }
         }
 
-        // --- EVENT LISTENERS ---
+        // ============================================================
+        //  HISTORY — Load from Firestore
+        // ============================================================
+
+        async function renderHistory() {
+            if (!currentUser) return;
+
+            els.historyList.innerHTML = '<p class="text-center py-12"><span class="loading-spinner"></span></p>';
+
+            try {
+                const snapshot = await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').orderBy('date', 'desc').get();
+
+                const archives = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const totalCount = archives.length;
+                els.historyCount.textContent = `${totalCount} ENTRIES`;
+
+                if (totalCount === 0) {
+                    els.historyList.innerHTML = '<p class="text-center text-gray-500 py-12">NO DATA FOUND.</p>';
+                    return;
+                }
+
+                els.historyList.innerHTML = archives.map((entry, idx) => {
+                    const date = new Date(entry.date);
+                    const dayNum = totalCount - idx;
+                    const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+                    const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    const outputLen = (entry.output || '').length;
+                    const inputLen = (entry.input || '').length;
+
+                    return `
+                    <div class="history-entry p-0 rounded-none" data-id="${entry.id}">
+                        <div class="entry-header flex justify-between items-center px-4 py-3">
+                            <div class="flex items-center gap-4">
+                                <span class="text-2xl font-bold glow-text">DAY ${dayNum}</span>
+                                <span class="text-xs opacity-50">${dateStr} ${timeStr}</span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <span class="text-xs opacity-50">${inputLen + outputLen} CHARS TOTAL</span>
+                                <button onclick="deleteEntry('${entry.id}')" class="text-red-500 hover:text-red-300 text-xs border border-red-500 border-opacity-30 px-2 py-0.5 hover:bg-red-500 hover:bg-opacity-20 transition-all">DEL</button>
+                            </div>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            ${entry.input ? `
+                            <div>
+                                <span class="history-label text-[#00ff41] mb-2 inline-block">INPUT_SOURCE</span>
+                                <div class="history-content text-gray-300 text-xs mt-1 p-3 bg-black bg-opacity-50">${escapeHtml(entry.input)}</div>
+                            </div>` : ''}
+                            <div>
+                                <span class="history-label text-[#00ff41] mb-2 inline-block">OUTPUT_TERMINAL</span>
+                                <div class="history-content text-white text-sm mt-1 p-3 bg-black bg-opacity-50">${escapeHtml(entry.output)}</div>
+                            </div>
+                            ${entry.actionPlan ? `
+                            <div class="border-t border-[#00ff4122] pt-3">
+                                <span class="history-label text-yellow-400 mb-1 inline-block">ACTION_PLAN</span>
+                                <p class="text-yellow-300 text-sm mt-1">▸ ${escapeHtml(entry.actionPlan)}</p>
+                            </div>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (error) {
+                console.error('History error:', error);
+                els.historyList.innerHTML = '<p class="text-center text-red-500 py-12">LOAD ERROR: ' + escapeHtml(error.message) + '</p>';
+            }
+        }
+
+        async function deleteEntry(id) {
+            if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+            if (!currentUser) return;
+            try {
+                await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').doc(id).delete();
+                await renderHistory();
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('삭제 실패: ' + error.message);
+            }
+        }
+
+        async function clearAllHistory() {
+            if (!confirm('정말 모든 기록을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+            if (!currentUser) return;
+            try {
+                const snapshot = await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').get();
+                const batch = db.batch();
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+
+                // Reset streak too
+                state.streak = 0;
+                state.lastDate = null;
+                await saveState();
+                els.streakDisplay.textContent = '0 DAY';
+
+                await renderHistory();
+            } catch (error) {
+                console.error('Clear history error:', error);
+                alert('삭제 실패: ' + error.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================================================
+        //  EVENT LISTENERS
+        // ============================================================
+
+        els.btnGoogleLogin.addEventListener('click', googleLogin);
+        els.btnLogout.addEventListener('click', logout);
         els.btnStart.addEventListener('click', startTimer);
         els.btnPause.addEventListener('click', pauseTimer);
         els.btnResume.addEventListener('click', () => {
             els.pauseModal.classList.add('hidden');
-            startTimer(); // technically resume
+            startTimer();
         });
 
         els.outputArea.addEventListener('input', updateValidation);
@@ -612,106 +925,31 @@
             if (e.key === 'Enter') saveAndTerminate();
         });
 
-        // --- HISTORY FEATURE ---
-        els.btnHistory.addEventListener('click', openHistory);
-        els.btnCloseHistory.addEventListener('click', closeHistory);
-        els.btnClearHistory.addEventListener('click', () => {
-            if (confirm('정말 모든 기록을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-                localStorage.removeItem('brain_opt_archives');
-                renderHistory();
-            }
+        // --- HISTORY ---
+        els.btnHistory.addEventListener('click', () => {
+            renderHistory();
+            els.historyModal.classList.remove('hidden');
         });
+        els.btnCloseHistory.addEventListener('click', () => {
+            els.historyModal.classList.add('hidden');
+        });
+        els.btnClearHistory.addEventListener('click', clearAllHistory);
 
-        els.btnResetStreak.addEventListener('click', () => {
-            if (confirm('스트릭을 0으로 초기화하시겠습니까?')) {
-                localStorage.setItem('brain_opt_state', JSON.stringify({ streak: 0, lastDate: null }));
-                state.streak = 0;
-                state.lastDate = null;
-                els.streakDisplay.textContent = '0 DAY';
-            }
+        els.btnResetStreak.addEventListener('click', async () => {
+            if (!confirm('스트릭을 0으로 초기화하시겠습니까?')) return;
+            state.streak = 0;
+            state.lastDate = null;
+            await saveState();
+            els.streakDisplay.textContent = '0 DAY';
         });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !els.historyModal.classList.contains('hidden')) {
-                closeHistory();
+                els.historyModal.classList.add('hidden');
             }
         });
 
-        function openHistory() {
-            renderHistory();
-            els.historyModal.classList.remove('hidden');
-        }
-
-        function closeHistory() {
-            els.historyModal.classList.add('hidden');
-        }
-
-        function renderHistory() {
-            const archives = JSON.parse(localStorage.getItem('brain_opt_archives') || '[]');
-            els.historyCount.textContent = `${archives.length} ENTRIES`;
-
-            if (archives.length === 0) {
-                els.historyList.innerHTML = '<p class="text-center text-gray-500 py-12">NO DATA FOUND.</p>';
-                return;
-            }
-
-            // Show newest first
-            const sorted = [...archives].reverse();
-            els.historyList.innerHTML = sorted.map((entry, idx) => {
-                const date = new Date(entry.date);
-                const dayNum = archives.length - idx;
-                const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-                const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-                const outputLen = (entry.output || '').length;
-                const inputLen = (entry.input || '').length;
-
-                return `
-                <div class="history-entry p-0 rounded-none" data-id="${entry.id}">
-                    <div class="entry-header flex justify-between items-center px-4 py-3">
-                        <div class="flex items-center gap-4">
-                            <span class="text-2xl font-bold glow-text">DAY ${dayNum}</span>
-                            <span class="text-xs opacity-50">${dateStr} ${timeStr}</span>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <span class="text-xs opacity-50">${inputLen + outputLen} CHARS TOTAL</span>
-                            <button onclick="deleteEntry(${entry.id})" class="text-red-500 hover:text-red-300 text-xs border border-red-500 border-opacity-30 px-2 py-0.5 hover:bg-red-500 hover:bg-opacity-20 transition-all">DEL</button>
-                        </div>
-                    </div>
-                    <div class="p-4 space-y-4">
-                        ${entry.input ? `
-                        <div>
-                            <span class="history-label text-[#00ff41] mb-2 inline-block">INPUT_SOURCE</span>
-                            <div class="history-content text-gray-300 text-xs mt-1 p-3 bg-black bg-opacity-50">${escapeHtml(entry.input)}</div>
-                        </div>` : ''}
-                        <div>
-                            <span class="history-label text-[#00ff41] mb-2 inline-block">OUTPUT_TERMINAL</span>
-                            <div class="history-content text-white text-sm mt-1 p-3 bg-black bg-opacity-50">${escapeHtml(entry.output)}</div>
-                        </div>
-                        ${entry.actionPlan ? `
-                        <div class="border-t border-[#00ff4122] pt-3">
-                            <span class="history-label text-yellow-400 mb-1 inline-block">ACTION_PLAN</span>
-                            <p class="text-yellow-300 text-sm mt-1">▸ ${escapeHtml(entry.actionPlan)}</p>
-                        </div>` : ''}
-                    </div>
-                </div>`;
-            }).join('');
-        }
-
-        function deleteEntry(id) {
-            if (!confirm('이 기록을 삭제하시겠습니까?')) return;
-            let archives = JSON.parse(localStorage.getItem('brain_opt_archives') || '[]');
-            archives = archives.filter(a => a.id !== id);
-            localStorage.setItem('brain_opt_archives', JSON.stringify(archives));
-            renderHistory();
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Anti-cheat / Focus loss (Optional - purely visual for now)
+        // Anti-cheat / Focus loss
         window.addEventListener('blur', () => {
             if (state.isRunning) {
                 document.title = "⚠ WARNING: FOCUS LOST";

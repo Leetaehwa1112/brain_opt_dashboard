@@ -388,13 +388,6 @@
 
         // --- INIT ---
         window.addEventListener('DOMContentLoaded', () => {
-            // --- ONE-TIME RESET (remove after first run) ---
-            if (!localStorage.getItem('brain_opt_reset_v2')) {
-                localStorage.setItem('brain_opt_state', JSON.stringify({ streak: 0, lastDate: null }));
-                localStorage.removeItem('brain_opt_archives');
-                localStorage.setItem('brain_opt_reset_v2', 'done');
-            }
-
             loadState();
             updateClock();
             setInterval(updateClock, 1000);
@@ -405,8 +398,16 @@
             }, 100);
 
             // Restore text if any (simple autosave)
-            els.inputArea.value = localStorage.getItem('draft_input') || '';
-            els.outputArea.value = localStorage.getItem('draft_output') || '';
+            // But only if today's mission hasn't been completed yet
+            const todayStr = new Date().toDateString();
+            if (state.lastDate === todayStr) {
+                // Today already completed — clear drafts so it starts fresh for display
+                els.inputArea.value = '';
+                els.outputArea.value = '';
+            } else {
+                els.inputArea.value = localStorage.getItem('draft_input') || '';
+                els.outputArea.value = localStorage.getItem('draft_output') || '';
+            }
             updateValidation();
         });
 
@@ -418,6 +419,25 @@
                 const data = JSON.parse(stored);
                 state.streak = data.streak || 0;
                 state.lastDate = data.lastDate;
+
+                // Validate streak continuity
+                // If lastDate exists, check if it's today or yesterday
+                // If more than 1 day has passed, reset streak to 0
+                if (state.lastDate) {
+                    const last = new Date(state.lastDate);
+                    const now = new Date();
+                    // Calculate difference in calendar days
+                    const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const diffDays = Math.floor((today - lastDay) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays > 1) {
+                        // Streak broken — missed a day
+                        state.streak = 0;
+                        state.lastDate = null;
+                        saveState();
+                    }
+                }
             }
             els.streakDisplay.textContent = `${state.streak} DAY`;
         }
@@ -528,7 +548,24 @@
             // Update Streak logic
             const today = new Date().toDateString();
             if (state.lastDate !== today) {
-                state.streak++;
+                // Check if streak is continuous (today or consecutive day)
+                if (state.lastDate) {
+                    const last = new Date(state.lastDate);
+                    const now = new Date();
+                    const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+                    const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const diffDays = Math.floor((todayDay - lastDay) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays > 1) {
+                        // Streak broken, start fresh
+                        state.streak = 1;
+                    } else {
+                        state.streak++;
+                    }
+                } else {
+                    // First time ever
+                    state.streak = 1;
+                }
                 state.lastDate = today;
                 saveState();
             }
@@ -547,12 +584,12 @@
             localStorage.setItem('brain_opt_archives', JSON.stringify(archives));
             console.log("ARCHIVED:", archive);
 
-            // Clean up
+            // Clean up drafts
             localStorage.removeItem('draft_input');
             localStorage.removeItem('draft_output');
 
-            alert("DATA SECURED. GOOD WORK.");
-            location.reload(); // Hard reset for next day
+            alert(`DAY ${state.streak} SECURED. STREAK: ${state.streak} DAYS. GOOD WORK.`);
+            location.reload(); // Hard reset for next session
         }
 
         // --- EVENT LISTENERS ---

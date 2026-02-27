@@ -378,7 +378,7 @@
                 </button>
             </div>
             <div class="text-sm text-right">
-                <span class="block text-xs opacity-50">CURRENT_STREAK</span>
+                <span class="block text-xs opacity-50">TOTAL_DAYS</span>
                 <span id="streak-display" class="text-xl font-bold">0 DAY</span>
             </div>
             <button id="btn-reset-streak"
@@ -481,7 +481,8 @@
             isRunning: false,
             intervalId: null,
             streak: 0,
-            lastDate: null
+            lastDate: null,
+            totalDays: 0
         };
 
         // --- DOM ELEMENTS ---
@@ -617,10 +618,15 @@
                         }
                     }
                 }
+
+                // Count total archives to sync DAY counter with history
+                const archiveSnapshot = await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').get();
+                state.totalDays = archiveSnapshot.size;
             } catch (error) {
                 console.error('Load state error:', error);
             }
-            els.streakDisplay.textContent = `${state.streak} DAY`;
+            els.streakDisplay.textContent = `${state.totalDays} DAY`;
         }
 
         async function saveState() {
@@ -864,11 +870,14 @@
                     .collection('archives').add(archive);
                 console.log("ARCHIVED:", archive);
 
+                // Update totalDays to sync with archive count
+                state.totalDays++;
+
                 // Clean up drafts
                 localStorage.removeItem('draft_input');
                 localStorage.removeItem('draft_output');
 
-                alert(`DAY ${state.streak} SECURED. STREAK: ${state.streak} DAYS. GOOD WORK.`);
+                alert(`DAY ${state.totalDays} SECURED. TOTAL: ${state.totalDays} DAYS. GOOD WORK.`);
                 location.reload();
             } catch (error) {
                 console.error('Save error:', error);
@@ -967,8 +976,9 @@
                 snapshot.docs.forEach(doc => batch.delete(doc.ref));
                 await batch.commit();
 
-                // Reset streak too
+                // Reset streak and totalDays too
                 state.streak = 0;
+                state.totalDays = 0;
                 state.lastDate = null;
                 await saveState();
                 els.streakDisplay.textContent = '0 DAY';
@@ -1022,8 +1032,9 @@
         els.btnClearHistory.addEventListener('click', clearAllHistory);
 
         els.btnResetStreak.addEventListener('click', async () => {
-            if (!confirm('스트릭을 0으로 초기화하시겠습니까?')) return;
+            if (!confirm('카운터를 0으로 초기화하시겠습니까?')) return;
             state.streak = 0;
+            state.totalDays = 0;
             state.lastDate = null;
             await saveState();
             els.streakDisplay.textContent = '0 DAY';

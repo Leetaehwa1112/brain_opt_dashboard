@@ -619,14 +619,11 @@
                     }
                 }
 
-                // Count total archives to sync DAY counter with history
-                const archiveSnapshot = await db.collection('users').doc(currentUser.uid)
-                    .collection('archives').get();
-                state.totalDays = archiveSnapshot.size;
+                // Count unique calendar dates from archives
+                await refreshTotalDays();
             } catch (error) {
                 console.error('Load state error:', error);
             }
-            els.streakDisplay.textContent = `${state.totalDays} DAY`;
         }
 
         async function saveState() {
@@ -641,6 +638,30 @@
                 }, { merge: true });
             } catch (error) {
                 console.error('Save state error:', error);
+            }
+        }
+
+        // ============================================================
+        //  HELPER — Count unique calendar dates from archives
+        // ============================================================
+
+        async function refreshTotalDays() {
+            if (!currentUser) return;
+            try {
+                const snap = await db.collection('users').doc(currentUser.uid)
+                    .collection('archives').get();
+                const uniqueDates = new Set();
+                snap.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.date) {
+                        const d = new Date(data.date);
+                        uniqueDates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                    }
+                });
+                state.totalDays = uniqueDates.size;
+                els.streakDisplay.textContent = `${state.totalDays} DAY`;
+            } catch (error) {
+                console.error('refreshTotalDays error:', error);
             }
         }
 
@@ -674,7 +695,7 @@
                         state.streak = parsed.streak;
                         state.lastDate = parsed.lastDate;
                         await saveState();
-                        els.streakDisplay.textContent = `${state.streak} DAY`;
+                        // Don't override streakDisplay here — refreshTotalDays handles it
                         console.log('MIGRATED STATE:', parsed);
                     }
                 }
@@ -870,8 +891,8 @@
                     .collection('archives').add(archive);
                 console.log("ARCHIVED:", archive);
 
-                // Update totalDays to sync with archive count
-                state.totalDays++;
+                // Re-count unique days from fresh Firestore data
+                await refreshTotalDays();
 
                 // Clean up drafts
                 localStorage.removeItem('draft_input');
@@ -909,9 +930,24 @@
                     return;
                 }
 
+                // Build unique date → DAY number mapping (oldest = DAY 1)
+                const dateToDay = {};
+                let dayCounter = 0;
+                [...archives].reverse().forEach(entry => {
+                    if (entry.date) {
+                        const d = new Date(entry.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                        if (!dateToDay[key]) {
+                            dayCounter++;
+                            dateToDay[key] = dayCounter;
+                        }
+                    }
+                });
+
                 els.historyList.innerHTML = archives.map((entry, idx) => {
                     const date = new Date(entry.date);
-                    const dayNum = totalCount - idx;
+                    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    const dayNum = dateToDay[dateKey] || (totalCount - idx);
                     const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
                     const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
                     const outputLen = (entry.output || '').length;
@@ -959,6 +995,8 @@
             try {
                 await db.collection('users').doc(currentUser.uid)
                     .collection('archives').doc(id).delete();
+                // Re-count unique days and update header
+                await refreshTotalDays();
                 await renderHistory();
             } catch (error) {
                 console.error('Delete error:', error);
@@ -981,7 +1019,8 @@
                 state.totalDays = 0;
                 state.lastDate = null;
                 await saveState();
-                els.streakDisplay.textContent = '0 DAY';
+                // Refresh from Firestore (should be 0 now)
+                await refreshTotalDays();
 
                 await renderHistory();
             } catch (error) {
